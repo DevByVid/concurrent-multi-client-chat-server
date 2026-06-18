@@ -2,12 +2,13 @@ import socket
 import threading
 
 HOST = "127.0.0.1"
-PORT = 5555
+PORT = 5556
 
-SERVER_NAME = "NODE-1"
+SERVER_NAME = "NODE-2"
 
 PEER_HOST = "127.0.0.1"
-PEER_PORT = 5556
+PEER_PORT = 5555
+
 # Stores connected clients: {socket: name}
 clients = {}
 clients_lock = threading.Lock()
@@ -81,7 +82,6 @@ def send_to_peer(message):
     except:
         pass
 
-
 def handle_client(client_socket, address):
     name = None
     reader = LineReader(client_socket)
@@ -90,12 +90,12 @@ def handle_client(client_socket, address):
         name_line = reader.read_line()
 
         if name_line and name_line.startswith("PEER|"):
-            forwarded = name_line[5:]
-            print(forwarded)
-            broadcast(forwarded)
-            client_socket.close()
-            return
-
+           forwarded = name_line[5:]
+           print(forwarded)
+           broadcast(forwarded)
+           client_socket.close()
+           return
+        
         if name_line is None:
             client_socket.close()
             return

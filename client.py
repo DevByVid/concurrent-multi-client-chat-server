@@ -3,9 +3,10 @@ import threading
 import sys
 import time
 
-HOST = "127.0.0.1"
-PORT = 5555
+HOST = input("Server IP (default 127.0.0.1): ") or "127.0.0.1"
 
+port = input("Server port (5555/5556): ")
+PORT = int(port) if port else 5555
 
 class LineReader:
     """Buffers raw bytes from a socket and yields complete, newline-delimited
