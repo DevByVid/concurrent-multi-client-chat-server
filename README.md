@@ -1,147 +1,128 @@
-# Concurrent Multi-Client Chat Server
+#  Mini Kafka Chat System (Distributed Event-Driven Messaging)
 
-## Overview
-
-A terminal-based real-time chat application built using Python sockets and multithreading.
-The system enables multiple clients to connect simultaneously to a central server and exchange messages in real time.
-
-The project implements newline-delimited message framing to correctly handle TCP packet boundaries and supports concurrent communication through threaded client handlers.
+A lightweight distributed messaging system inspired by Kafka architecture, built using Python sockets.  
+It demonstrates core distributed systems principles such as log replication, event streaming, causal ordering, and fault-tolerant recovery.
 
 ---
 
-## Features
+## 🚀 Key Features
 
-* Real-time messaging between multiple clients
-* Concurrent handling of multiple users using threads
-* TCP socket-based client-server architecture
-* Username-based messaging
-* Join and leave notifications
-* Timestamped chat messages
-* Reliable newline-based message framing
-* Graceful client disconnect handling
-* UTF-8 safe message decoding
-
----
-
-## Architecture
-
-
-+-----------+
-| Client 1  |
-+-----------+
-      |
-+-----------+
-| Client 2  |
-+-----------+
-      |
-      v
-+-------------------+
-|   Chat Server     |
-| Thread per Client |
-+-------------------+
-      ^
-      |
-+-----------+
-| Client 3  |
-+-----------+
-```
+-  Multi-node distributed architecture (Node-1 ↔ Node-2)
+-  Event-driven message propagation (like a mini message broker)
+-  Log replication across nodes (Kafka-like behavior)
+-  Lamport Logical Clocks for causal ordering
+-  Persistent event logs (append-only storage)
+-  Crash recovery using log replay
+-  Node synchronization (SYNC_REQUEST / SYNC_DATA protocol)
+-  Deduplication using unique event IDs
 
 ---
 
-## Tech Stack
+##  System Architecture
+    ┌──────────────┐
+    │   Client A   │
+    └──────┬───────┘
+           │
+    ┌──────▼───────┐
+    │   NODE-1     │◄──────────────┐
+    │ (Broker)     │               │ Event Replication
+    └──────┬───────┘               │
+           │                       │
+    ┌──────▼───────┐               │
+    │   NODE-2     │───────────────┘
+    │ (Broker)     │
+    └──────┬───────┘
+           │
+    ┌──────▼───────┐
+    │   Client B   │
+    └──────────────┘
 
-* Python
-* Socket Programming
-* Multithreading
-* TCP Networking
+    
+---
+
+## ⚙️ How It Works
+
+1. Client sends a message (event) to a node
+2. Node assigns a Lamport timestamp
+3. Event is appended to persistent log
+4. Event is broadcast to local clients
+5. Event is replicated to peer node
+6. Peer node deduplicates and processes event
+7. On restart, logs are replayed to rebuild state
+8. Nodes synchronize missing events using sync protocol
 
 ---
 
-## Project Structure
+## 🔁 Fault Tolerance
 
+This system ensures reliability via:
 
-distributed-chat-server/
+-  Append-only event logs (Kafka-like storage model)
+-  Log replay for state recovery after crash
+-  Cross-node replication of events
+-  Deduplication using unique event IDs
+-  Synchronization protocol for consistency recovery
+
+---
+
+## 🧠 Concepts Demonstrated
+
+- Distributed Systems Fundamentals
+- Event Streaming Architecture (Kafka-inspired)
+- Log-based Storage Model
+- Eventual Consistency
+- Lamport Logical Clocks
+- Peer-to-Peer Replication
+- Fault Tolerance & Recovery
+
+---
+
+## 📦 Project Structure
+mini-kafka-chat-system/
 │
-├── server.py
-├── client.py
-├── README.md
-├── screenshots/
-└── requirements.txt
-```
-
----
-
-## How to Run
-
-### Start Server
-
-```bash
-python server.py
-```
-
-Expected:
-
-Server started...
-Listening on 127.0.0.1:5555
+├── server.py # NODE-1 (broker)
+├── server_node.py # NODE-2 (broker)
+├── client.py # chat client
+├── requirements.txt
+├── NODE-1_messages.log
+├── NODE-2_messages.log
+└── README.md
 
 
 ---
 
-### Start Clients
+## 🛠️ Tech Stack
 
-Open multiple terminals:
-
-```bash
-python client.py
-```
-
-Enter usernames and begin chatting.
+- Python 3
+- Socket Programming (TCP)
+- Multithreading
+- JSON-based event format
+- File-based persistence (event log storage)
 
 ---
 
-## Example Interaction
+## 🚀 Future Improvements
 
-Server:
-
-```text
-VIDUSHI joined
-TEST joined
-```
-
-Client:
-
-```text
-[22:40] VIDUSHI: hello
-[22:41] TEST: hi
-```
+-  Partitioned event streams (Kafka partitions simulation)
+-  Vector clocks (stronger causality model)
+-  Leader-based replication (Raft-style consensus)
+-  Docker-based multi-node deployment
+-  Web UI for real-time event streaming
 
 ---
 
-## Challenges Solved
+##  Author
 
-* Handling multiple simultaneous connections
-* Preventing TCP message fragmentation issues
-* Designing thread-safe shared client management
-* Maintaining responsive real-time communication
+Vidushi Singh
 
 ---
 
-## Future Improvements
+## ⭐ Why This Project Matters
 
-* Chat rooms
-* Message persistence
-* Encryption
-* Distributed multi-server architecture
-* GUI interface
+This project simulates a simplified version of a distributed event streaming system similar to Kafka.
 
----
-
-## Learnings
-
-This project strengthened understanding of:
-
-* Socket programming
-* Concurrency
-* Client-server communication
-* TCP behavior
-* Thread synchronization
+It demonstrates:
+- Event-driven architecture thinking
+- Distributed replication mechanisms
+- Fault-tolerant log-based systems
+- Core system design principles used in large-scale backend systems
