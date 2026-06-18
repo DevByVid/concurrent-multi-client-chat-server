@@ -2,6 +2,8 @@ import socket
 import threading
 import sys
 import time
+import json
+import uuid
 
 HOST = input("Server IP (default 127.0.0.1): ") or "127.0.0.1"
 
@@ -71,12 +73,14 @@ def start_client():
         while True:
             message = input()
             if message:
-                timestamped = f"[{time.strftime('%H:%M')}] {message}"
-                try:
-                    sock.sendall((timestamped + "\n").encode("utf-8"))
-                except OSError:
-                    print("Connection lost.")
-                    break
+                msg = {
+                    "id": str(uuid.uuid4()),
+                    "from": name,
+                    "text": message,
+                    "node": "CLIENT"
+                  }
+
+                sock.sendall((json.dumps(msg) + "\n").encode("utf-8"))
     except (KeyboardInterrupt, EOFError):
         print("\nClosing connection...")
     finally:

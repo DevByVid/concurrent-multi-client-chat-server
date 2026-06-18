@@ -1,5 +1,10 @@
 import socket
 import threading
+import json
+import uuid
+import time
+import os
+import heapq
 
 HOST = "127.0.0.1"
 PORT = 5556
@@ -12,7 +17,81 @@ PEER_PORT = 5555
 # Stores connected clients: {socket: name}
 clients = {}
 clients_lock = threading.Lock()
+seen_messages = set()
+lamport_clock = 0
+message_log = []
 
+peer_socket = None
+peer_lock = threading.Lock()
+
+LOG_FILE = f"{SERVER_NAME}_messages.log"
+
+def tick(clock):
+    return clock + 1
+
+def connect_to_peer():
+    global peer_socket
+    try:
+        peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        peer_socket.connect((PEER_HOST, PEER_PORT))
+        print("Connected to peer node")
+    except:
+        peer_socket = None
+
+
+def load_history():
+    if not os.path.exists(LOG_FILE):
+        return
+
+    print("\n--- REPLAYING HISTORY ---\n")
+
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    msg = json.loads(line.strip())
+
+                    formatted = f"[L{msg.get('lamport','?')}] [{msg['node']}] {msg['from']}: {msg['text']}"
+                    print(formatted)
+
+                except:
+                    continue
+    except Exception as e:
+        print("History load failed:", e)
+
+    print("\n--- END HISTORY ---\n")
+
+def request_sync():
+    try:
+        peer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        peer.connect((PEER_HOST, PEER_PORT))
+        peer.sendall(("SYNC_REQUEST\n").encode("utf-8"))
+        peer.close()
+    except:
+        pass
+
+request_sync()
+
+def create_message(name, text, node):
+    return {
+        "id": str(uuid.uuid4()),
+        "from": name,
+        "text": text,
+        "node": node,
+        "timestamp": time.time()
+    }
+
+def send_to_peer(message):
+    global peer_socket
+
+    if peer_socket is None:
+        return
+
+    try:
+        with peer_lock:
+            peer_socket.sendall(("PEER|" + message + "\n").encode("utf-8"))
+    except:
+        peer_socket = None
 
 class LineReader:
     """Buffers raw bytes from a socket and yields complete, newline-delimited
@@ -73,19 +152,13 @@ def broadcast(message, exclude_socket=None):
             name = clients.pop(dead, "Unknown")
             print(f"{name} left (connection lost)")
 
-def send_to_peer(message):
-    try:
-        peer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        peer.connect((PEER_HOST, PEER_PORT))
-        peer.sendall(("PEER|" + message + "\n").encode("utf-8"))
-        peer.close()
-    except:
+
         pass
 
 def handle_client(client_socket, address):
     name = None
     reader = LineReader(client_socket)
-    try:
+    try :
         # First line from the client is treated as their chosen name
         name_line = reader.read_line()
 
@@ -110,29 +183,86 @@ def handle_client(client_socket, address):
         broadcast(f"*** {name} joined the chat ***")
 
         while True:
-            message = reader.read_line()
-            if message is None:
-                break  # client disconnected
+           message = reader.read_line()
 
-            if not message:
-                continue  # ignore blank lines
+           if message is None:
+              break
 
-            # Client sends "[HH:MM] text" — move the timestamp to the front
-            # of the line so it reads "[HH:MM] NAME: text" instead of
-            # "NAME: [HH:MM] text". Guard against malformed input (e.g. a
-            # message that starts with '[' but has no closing '] ').
-            if message.startswith("[") and "] " in message:
-                timestamp, _, rest = message.partition("] ")
-                formatted = f"{timestamp}] [{SERVER_NAME}] {name}: {rest}"
-            else:
-                formatted = f"{SERVER_NAME} | {name}: {message}"
+           if not message:
+              continue
 
-            print(formatted)
-            broadcast(formatted)
-            send_to_peer(formatted)
+
+           if message == "SYNC_REQUEST":
+               try:
+                   with open(LOG_FILE, "r", encoding="utf-8") as f:
+                        for line in f:
+                           peer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                           peer.connect((PEER_HOST, PEER_PORT))
+                           peer.sendall(("SYNC_DATA|" + line.strip() + "\n").encode("utf-8"))
+                           peer.close()
+               except:
+                     pass
+               continue
+
+
+           if message.startswith("PEER|"):
+              message = message[5:]
+
+    
+           if message.startswith("SYNC_DATA|"):
+              raw = message[11:]
+
+              try:
+                msg = json.loads(raw)
+              except:
+                continue
+
+              if msg["id"] in seen_messages:
+                 continue
+              seen_messages.add(msg["id"])
+
+              formatted = f"[SYNC][L{msg.get('lamport','?')}] [{msg['node']}] {msg['from']}: {msg['text']}"
+              print(formatted)
+
+              broadcast(json.dumps(msg))
+              continue
+
+    
+           try:
+               msg = json.loads(message)
+           except:
+             continue
+
+           if msg["id"] in seen_messages:
+             continue
+           seen_messages.add(msg["id"])
+
+           # lamport update
+           global lamport_clock
+           lamport_clock = tick(lamport_clock)
+           msg["lamport"] = lamport_clock
+
+           # persistence
+           with open(LOG_FILE, "a", encoding="utf-8") as f:
+             f.write(json.dumps(msg) + "\n")
+
+           # update node
+           msg["node"] = SERVER_NAME
+
+           # local log
+           message_log.append(msg)
+           message_log.sort(key=lambda x: x["lamport"])
+
+           # print
+           formatted = f"[L{msg['lamport']}] [{msg['node']}] {msg['from']}: {msg['text']}"
+           print(formatted)
+
+           # propagate
+           broadcast(json.dumps(msg))
+           send_to_peer(json.dumps(msg))
 
     except (ConnectionError, OSError):
-        pass
+          pass
     finally:
         with clients_lock:
             clients.pop(client_socket, None)
@@ -150,6 +280,8 @@ def start_server():
 
     print("Server started...")
     print(f"Listening on {HOST}:{PORT}")
+    load_history()
+    connect_to_peer()
 
     try:
         while True:
